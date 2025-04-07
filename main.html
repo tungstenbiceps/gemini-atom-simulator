@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Particle Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @font-face {
+        font-family: 'LucideIcons';
+        src: url(https://cdn.jsdelivr.net/npm/lucide-static@latest/font/Lucide.ttf) format('truetype');
+      }
+      .lucide {
+        font-family: 'LucideIcons';
+        font-size: 1.25rem; /* Adjust size as needed */
+        line-height: 1;
+        vertical-align: middle;
+      }
+      /* Basic styles for canvas and layout */
+      body {
+          font-family: 'Inter', sans-serif;
+          overscroll-behavior: none; /* Prevent pull-to-refresh */
+          user-select: none; /* Prevent text selection during drag */
+          -webkit-user-select: none; /* Safari */
+          -moz-user-select: none; /* Firefox */
+          -ms-user-select: none; /* IE10+ */
+      }
+      canvas {
+          display: block;
+          background-color: #111827; /* Darker background */
+          border-radius: 0.5rem;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          cursor: crosshair; /* Indicate interaction area */
+      }
+      .controls button {
+          transition: all 0.2s ease-in-out;
+      }
+      .controls button:hover:not([aria-pressed="true"]) { /* Don't lift active button */
+          transform: translateY(-2px);
+          box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);
+      }
+      .controls button:active {
+          transform: translateY(0px);
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      /* Style for active particle selection button */
+      .controls button[aria-pressed="true"] {
+          transform: translateY(1px);
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+          filter: brightness(0.9);
+      }
+      /* Style for particle counts */
+      .particle-count {
+          min-width: 2.5rem; /* Wider count display */
+          text-align: center;
+          font-variant-numeric: tabular-nums; /* Keep numbers aligned */
+      }
+      /* Style for the velocity indicator line */
+      #velocityIndicator {
+          position: absolute;
+          border-top: 2px dashed rgba(255, 255, 255, 0.7);
+          pointer-events: none; /* Prevent line from interfering with mouse events */
+          display: none; /* Hidden initially */
+          transform-origin: 0 0;
+      }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <h1 class="text-2xl font-bold mb-4 text-center">Interactive Particle Simulator</h1>
+    <p class="text-center text-sm text-gray-500 dark:text-gray-400 mb-4">
+        Select a particle type, then click and drag on the canvas to launch it.
+    </p>
+
+    <div class="w-full max-w-3xl mx-auto">
+        <div class="relative"> <canvas id="particleCanvas" class="w-full aspect-video mb-4"></canvas>
+            <div id="velocityIndicator"></div>
+        </div>
+
+        <div class="controls grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <button id="selectProton" data-type="proton" aria-pressed="true" class="flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-5 rounded-lg shadow-md">
+                <span class="lucide" aria-hidden="true">&#xe9e8;</span> Select Proton
+            </button>
+            <button id="selectNeutron" data-type="neutron" aria-pressed="false" class="flex items-center justify-center gap-2 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-5 rounded-lg shadow-md">
+                <span class="lucide" aria-hidden="true">&#xe9e8;</span> Select Neutron
+            </button>
+            <button id="selectElectron" data-type="electron" aria-pressed="false" class="flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-5 rounded-lg shadow-md">
+                <span class="lucide" aria-hidden="true">&#xe9e8;</span> Select Electron
+            </button>
+        </div>
+
+        <div class="flex flex-wrap justify-center items-center gap-x-6 gap-y-2 text-lg mb-4 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-inner">
+             <div class="flex items-center gap-2">
+                <span class="font-medium text-red-500">Protons:</span>
+                <span id="protonCount" class="font-bold particle-count bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 px-2 py-1 rounded-md">0</span>
+            </div>
+             <div class="flex items-center gap-2">
+                <span class="font-medium text-gray-500">Neutrons:</span>
+                <span id="neutronCount" class="font-bold particle-count bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-2 py-1 rounded-md">0</span>
+            </div>
+             <div class="flex items-center gap-2">
+                <span class="font-medium text-blue-500">Electrons:</span>
+                <span id="electronCount" class="font-bold particle-count bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 px-2 py-1 rounded-md">0</span>
+            </div>
+        </div>
+
+        <div class="flex justify-center items-center gap-4">
+            <button id="resetSim" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg shadow-md flex items-center justify-center gap-2">
+                 <span class="lucide" aria-hidden="true">&#xea9c;</span> Reset
+            </button>
+             <button id="pauseSim" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg shadow-md flex items-center justify-center gap-2">
+                 <span class="lucide" aria-hidden="true">&#xea76;</span> Pause
+            </button>
+        </div>
+         <p class="text-center text-xs text-gray-500 dark:text-gray-400 mt-4">
+            Note: Simulates classical electromagnetism and a simplified strong force attraction between nucleons. Not quantum mechanically accurate. Performance may decrease with many particles.
+        </p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+        const velocityIndicator = document.getElementById('velocityIndicator');
+
+        // Buttons and count displays
+        const selectProtonBtn = document.getElementById('selectProton');
+        const selectNeutronBtn = document.getElementById('selectNeutron');
+        const selectElectronBtn = document.getElementById('selectElectron');
+        const resetBtn = document.getElementById('resetSim');
+        const pauseBtn = document.getElementById('pauseSim');
+        const protonCountEl = document.getElementById('protonCount');
+        const neutronCountEl = document.getElementById('neutronCount');
+        const electronCountEl = document.getElementById('electronCount');
+        const particleSelectBtns = [selectProtonBtn, selectNeutronBtn, selectElectronBtn];
+
+        // --- Simulation State ---
+        let particles = []; // Stores all particle objects
+        let particleIdCounter = 0;
+        let selectedParticleType = 'proton'; // Default selection
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let currentMouseX = 0;
+        let currentMouseY = 0;
+        let animationFrameId = null;
+        let lastTimestamp = 0;
+        let isPaused = false;
+
+        // --- Constants & Configuration ---
+        const PARTICLE_RADIUS = { proton: 5, neutron: 5, electron: 3 };
+        const PARTICLE_MASS = { proton: 1.0, neutron: 1.0, electron: 0.05 }; // Simplified mass for electron
+        const PARTICLE_CHARGE = { proton: 1.0, neutron: 0.0, electron: -1.0 };
+        const PARTICLE_COLOR = { proton: 'rgba(239, 68, 68, 1)', neutron: 'rgba(107, 114, 128, 1)', electron: 'rgba(59, 130, 246, 1)' };
+
+        const G = 1; // Gravitational constant (not used, but placeholder if needed)
+        const K_ELECTRO = 50; // Coulomb's constant (controls strength of electric force)
+        const K_STRONG = 100; // Strength of simplified strong force
+        const STRONG_FORCE_RANGE = 15; // Max distance for strong force (pixels)
+        const STRONG_FORCE_FALLOFF = 2; // Power for strong force falloff (e.g., 1/r^2)
+        const MIN_FORCE_DIST = 5; // Minimum distance to prevent division by zero in force calcs
+        const VELOCITY_SCALE = 0.1; // Scales drag distance to initial velocity
+        const DAMPING = 0.999; // Slight velocity damping factor to prevent runaway energy
+
+        // --- Utility Functions ---
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            // Make canvas responsive, using aspect-video ratio from Tailwind
+            const aspectRatio = 16 / 9;
+            let newWidth = container.clientWidth;
+            let newHeight = newWidth / aspectRatio;
+
+            // Adjust if height is constrained by window height
+            const maxHeight = window.innerHeight * 0.7; // Max 70% of viewport height
+             if (newHeight > maxHeight) {
+                newHeight = maxHeight;
+                newWidth = newHeight * aspectRatio;
+            }
+
+            canvas.width = newWidth;
+            canvas.height = newHeight;
+        }
+
+        function updateCounts() {
+            let pCount = 0, nCount = 0, eCount = 0;
+            particles.forEach(p => {
+                if (p.type === 'proton') pCount++;
+                else if (p.type === 'neutron') nCount++;
+                else if (p.type === 'electron') eCount++;
+            });
+            protonCountEl.textContent = pCount;
+            neutronCountEl.textContent = nCount;
+            electronCountEl.textContent = eCount;
+        }
+
+        function getCanvasMousePos(event) {
+            const rect = canvas.getBoundingClientRect();
+            // For touch events, get the first touch point
+            const clientX = event.clientX ?? event.touches[0].clientX;
+            const clientY = event.clientY ?? event.touches[0].clientY;
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        // --- Particle Management ---
+        function addParticle(type, x, y, vx = 0, vy = 0) {
+            const id = particleIdCounter++;
+            particles.push({
+                id: id,
+                type: type,
+                x: x, y: y,
+                vx: vx, vy: vy,
+                fx: 0, fy: 0, // Accumulated forces
+                mass: PARTICLE_MASS[type],
+                charge: PARTICLE_CHARGE[type],
+                radius: PARTICLE_RADIUS[type],
+                color: PARTICLE_COLOR[type]
+            });
+            updateCounts();
+        }
+
+        function resetSimulation() {
+            particles = [];
+            particleIdCounter = 0;
+            updateCounts();
+            if (isPaused) {
+                togglePause(); // Resume if paused on reset
+            }
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            pauseBtn.innerHTML = isPaused
+                ? `<span class="lucide" aria-hidden="true">&#xe95e;</span> Play` // Play icon
+                : `<span class="lucide" aria-hidden="true">&#xea76;</span> Pause`; // Pause icon
+
+            if (!isPaused && animationFrameId === null) {
+                // Restart animation loop if resuming
+                lastTimestamp = performance.now(); // Reset timestamp to avoid large jump
+                animationFrameId = requestAnimationFrame(animate);
+            } else if (isPaused && animationFrameId !== null) {
+                 // Stop animation loop if pausing
+                 cancelAnimationFrame(animationFrameId);
+                 animationFrameId = null;
+            }
+        }
+
+
+        // --- Physics Calculation ---
+        function calculateForces() {
+            // Reset forces for all particles
+            for (const p of particles) {
+                p.fx = 0;
+                p.fy = 0;
+            }
+
+            // Calculate pairwise forces
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const p1 = particles[i];
+                    const p2 = particles[j];
+
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    let distSq = dx * dx + dy * dy;
+
+                    // Avoid division by zero or extreme forces at very close range
+                    if (distSq < MIN_FORCE_DIST * MIN_FORCE_DIST) {
+                        distSq = MIN_FORCE_DIST * MIN_FORCE_DIST;
+                    }
+                    const dist = Math.sqrt(distSq);
+                    const unitX = dx / dist;
+                    const unitY = dy / dist;
+
+                    // 1. Electromagnetic Force (Coulomb's Law: F = k * q1 * q2 / r^2)
+                    if (p1.charge !== 0 && p2.charge !== 0) {
+                        const forceMag = K_ELECTRO * p1.charge * p2.charge / distSq;
+                        p1.fx -= forceMag * unitX;
+                        p1.fy -= forceMag * unitY;
+                        p2.fx += forceMag * unitX;
+                        p2.fy += forceMag * unitY;
+                    }
+
+                    // 2. Simplified Strong Nuclear Force (Only between nucleons, attractive, short-range)
+                    const isP1Nucleon = p1.type === 'proton' || p1.type === 'neutron';
+                    const isP2Nucleon = p2.type === 'proton' || p2.type === 'neutron';
+                    if (isP1Nucleon && isP2Nucleon && dist < STRONG_FORCE_RANGE) {
+                        // Strong attraction, falls off quickly with distance
+                        const strongForceMag = -K_STRONG / Math.pow(dist, STRONG_FORCE_FALLOFF);
+                        // Apply a cap to prevent extreme forces when very close
+                        const cappedStrongForceMag = Math.max(strongForceMag, -K_STRONG / Math.pow(MIN_FORCE_DIST, STRONG_FORCE_FALLOFF));
+
+                        p1.fx += cappedStrongForceMag * unitX;
+                        p1.fy += cappedStrongForceMag * unitY;
+                        p2.fx -= cappedStrongForceMag * unitX;
+                        p2.fy -= cappedStrongForceMag * unitY;
+                    }
+                }
+            }
+        }
+
+        function updatePhysics(deltaTime) {
+            if (deltaTime <= 0) return; // Skip update if no time passed
+
+            // Simple Euler integration:
+            // acceleration = force / mass
+            // velocity += acceleration * dt
+            // position += velocity * dt
+
+            const dt = Math.min(deltaTime * 0.01, 0.5); // Scale delta time and cap it for stability
+
+            for (const p of particles) {
+                const ax = p.fx / p.mass;
+                const ay = p.fy / p.mass;
+
+                p.vx += ax * dt;
+                p.vy += ay * dt;
+
+                // Apply damping
+                p.vx *= DAMPING;
+                p.vy *= DAMPING;
+
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+
+                // Boundary checks (simple wrap-around for now)
+                if (p.x < 0) p.x += canvas.width;
+                if (p.x > canvas.width) p.x -= canvas.width;
+                if (p.y < 0) p.y += canvas.height;
+                if (p.y > canvas.height) p.y -= canvas.height;
+
+                 // Alternative: Bounce off walls
+                 /*
+                 if (p.x - p.radius < 0) { p.vx *= -0.8; p.x = p.radius; }
+                 if (p.x + p.radius > canvas.width) { p.vx *= -0.8; p.x = canvas.width - p.radius; }
+                 if (p.y - p.radius < 0) { p.vy *= -0.8; p.y = p.radius; }
+                 if (p.y + p.radius > canvas.height) { p.vy *= -0.8; p.y = canvas.height - p.radius; }
+                 */
+            }
+        }
+
+        // --- Drawing Functions ---
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+                // Optional: Add a border
+                // ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                // ctx.lineWidth = 1;
+                // ctx.stroke();
+            });
+        }
+
+         function drawVelocityIndicator() {
+            if (!isDragging) {
+                velocityIndicator.style.display = 'none';
+                return;
+            }
+            const dx = currentMouseX - dragStartX;
+            const dy = currentMouseY - dragStartY;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx); // Angle in radians
+
+            if (length < 2) { // Don't show if drag is too small
+                 velocityIndicator.style.display = 'none';
+                 return;
+            }
+
+            velocityIndicator.style.display = 'block';
+            // Position the line start at the drag start point relative to the canvas parent
+            const canvasRect = canvas.getBoundingClientRect();
+            const parentRect = canvas.parentElement.getBoundingClientRect();
+            velocityIndicator.style.left = `${canvasRect.left - parentRect.left + dragStartX}px`;
+            velocityIndicator.style.top = `${canvasRect.top - parentRect.top + dragStartY}px`;
+            velocityIndicator.style.width = `${length}px`;
+            velocityIndicator.style.transform = `rotate(${angle}rad)`;
+        }
+
+
+        // --- Main Draw Loop ---
+        function draw(timestamp) {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw all particles
+            drawParticles();
+
+             // Draw the velocity indicator line if dragging
+             drawVelocityIndicator();
+        }
+
+        // --- Animation Loop ---
+        function animate(timestamp) {
+            if (isPaused) {
+                 animationFrameId = null; // Ensure loop stops if paused externally
+                 return;
+            }
+
+            // Calculate time delta for physics updates
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const deltaTime = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+
+            // Update physics
+            calculateForces();
+            updatePhysics(deltaTime);
+
+            // Draw the scene
+            draw(timestamp);
+
+            // Request next frame
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        // --- Event Listeners ---
+        particleSelectBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedParticleType = btn.dataset.type;
+                // Update button styles
+                particleSelectBtns.forEach(b => b.setAttribute('aria-pressed', 'false'));
+                btn.setAttribute('aria-pressed', 'true');
+            });
+        });
+
+        resetBtn.addEventListener('click', resetSimulation);
+        pauseBtn.addEventListener('click', togglePause);
+
+        // Mouse/Touch interaction for adding particles
+        function handlePointerDown(event) {
+            event.preventDefault(); // Prevent default drag behavior (e.g., image dragging)
+            const pos = getCanvasMousePos(event);
+            isDragging = true;
+            dragStartX = pos.x;
+            dragStartY = pos.y;
+            currentMouseX = pos.x; // Initialize current mouse position
+            currentMouseY = pos.y;
+            // Add listener for mouse move *only* when dragging starts
+            document.addEventListener('mousemove', handlePointerMove);
+            document.addEventListener('touchmove', handlePointerMove, { passive: false }); // Use passive: false if preventDefault is needed inside move
+             // Add listener for mouse up *globally* to catch mouse up outside canvas
+            document.addEventListener('mouseup', handlePointerUp);
+            document.addEventListener('touchend', handlePointerUp);
+        }
+
+        function handlePointerMove(event) {
+             if (!isDragging) return;
+             event.preventDefault(); // Prevent scrolling on touch devices during drag
+             const pos = getCanvasMousePos(event);
+             currentMouseX = pos.x;
+             currentMouseY = pos.y;
+             // Velocity indicator is drawn in the main draw loop
+        }
+
+        function handlePointerUp(event) {
+             if (!isDragging) return;
+             isDragging = false;
+             velocityIndicator.style.display = 'none'; // Hide indicator
+
+             const pos = getCanvasMousePos(event); // Use final position for velocity calc
+             const dx = pos.x - dragStartX;
+             const dy = pos.y - dragStartY;
+
+             // Only add particle if drag distance is significant (optional)
+             // if (dx*dx + dy*dy < 5*5) return;
+
+             const vx = dx * VELOCITY_SCALE;
+             const vy = dy * VELOCITY_SCALE;
+
+             addParticle(selectedParticleType, dragStartX, dragStartY, vx, vy);
+
+             // Remove global listeners
+             document.removeEventListener('mousemove', handlePointerMove);
+             document.removeEventListener('touchmove', handlePointerMove);
+             document.removeEventListener('mouseup', handlePointerUp);
+             document.removeEventListener('touchend', handlePointerUp);
+        }
+
+        canvas.addEventListener('mousedown', handlePointerDown);
+        canvas.addEventListener('touchstart', handlePointerDown, { passive: false }); // Use passive: false to allow preventDefault
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- Initial Setup ---
+        updateCounts();
+        resizeCanvas(); // Initial size calculation
+        // Start the continuous animation loop
+        lastTimestamp = performance.now();
+        animate(lastTimestamp);
+
+    </script>
+
+</body>
+</html>
